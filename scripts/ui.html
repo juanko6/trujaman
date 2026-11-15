@@ -1,0 +1,401 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>trujamán</title>
+<style>
+  :root {
+    --fondo: #f6f5f1; --papel: #ffffff; --tinta: #1c1b18; --tenue: #6f6c64; --raya: #e2dfd6;
+    --acento: #0f6b5c; --acento-suave: #dcefe9; --sobre-acento: #ffffff;
+    --alerta: #9a3b12; --alerta-suave: #fbe9df;
+    color-scheme: light dark;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --fondo: #151513; --papel: #1e1e1b; --tinta: #eceae3; --tenue: #9a968b; --raya: #33322d;
+      --acento: #5cc4ae; --acento-suave: #1f3a34; --sobre-acento: #10201c;
+      --alerta: #f0a37c; --alerta-suave: #3a2418;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--fondo); color: var(--tinta);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  main { max-width: 660px; margin: 0 auto; padding: 28px 16px 64px; display: grid; gap: 14px; }
+  header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 0 2px 6px; }
+  h1 { margin: 0; font: italic 600 28px/1 ui-serif, Georgia, serif; letter-spacing: -0.01em; }
+  h1 small { font: 400 13px system-ui, sans-serif; color: var(--tenue); margin-left: 8px; font-style: normal; }
+  h2 { margin: 0 0 10px; font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--tenue); }
+  .estado { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; color: var(--tenue); white-space: nowrap; }
+  .punto { width: 8px; height: 8px; border-radius: 50%; background: var(--tenue); }
+  .estado.listo .punto { background: var(--acento); }
+  .estado.cargando .punto { animation: latir 1s ease-in-out infinite; }
+  .estado.mal .punto { background: var(--alerta); }
+  @keyframes latir { 50% { opacity: 0.25; } }
+
+  section { background: var(--papel); border: 1px solid var(--raya); border-radius: 14px; padding: 16px; }
+  .dos { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  label.campo { display: grid; gap: 5px; font-size: 13px; color: var(--tenue); min-width: 0; }
+  select {
+    width: 100%; font: inherit; color: var(--tinta); background: var(--fondo);
+    border: 1px solid var(--raya); border-radius: 9px; padding: 8px 10px; text-overflow: ellipsis;
+  }
+  .nivel { height: 5px; border-radius: 3px; background: var(--raya); overflow: hidden; margin-top: 2px; }
+  .nivel i { display: block; height: 100%; width: 0; background: var(--tenue); border-radius: 3px; transition: width 90ms linear; }
+  .nivel.voz i { background: var(--acento); }
+
+  .modo { display: grid; grid-template-columns: 1fr 1fr; background: var(--fondo); border: 1px solid var(--raya); border-radius: 10px; padding: 3px; margin-top: 14px; }
+  .modo button { font: inherit; border: 0; background: none; color: var(--tenue); padding: 7px 8px; border-radius: 7px; cursor: pointer; }
+  .modo button[aria-pressed="true"] { background: var(--papel); color: var(--tinta); font-weight: 600; box-shadow: 0 0 0 1px var(--raya); }
+  .opciones { display: flex; flex-wrap: wrap; gap: 8px 18px; align-items: center; margin-top: 12px; font-size: 14px; }
+  .opciones label { display: inline-flex; align-items: center; gap: 7px; cursor: pointer; }
+  .opciones small { color: var(--tenue); }
+  .opciones select { width: auto; max-width: 190px; padding: 4px 8px; font-size: 13px; }
+  input[type="checkbox"] { accent-color: var(--acento); width: 16px; height: 16px; margin: 0; }
+
+  .principal {
+    width: 100%; margin-top: 14px; font: 600 16px system-ui, sans-serif; padding: 13px;
+    border: 0; border-radius: 11px; background: var(--acento); color: var(--sobre-acento); cursor: pointer;
+  }
+  .principal:disabled { opacity: 0.45; cursor: default; }
+  .principal.activo { background: var(--tinta); color: var(--fondo); }
+  .principal.activo::before { content: ""; display: inline-block; width: 9px; height: 9px; border-radius: 2px; background: currentColor; margin-right: 9px; }
+  :is(button, select, input, .soltar):focus-visible { outline: 2px solid var(--acento); outline-offset: 2px; }
+
+  .cadena { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--tenue); margin-bottom: 12px; }
+  .cadena span { padding: 3px 9px; border: 1px solid var(--raya); border-radius: 99px; transition: background 0.25s, color 0.25s, border-color 0.25s; }
+  .cadena span.on { background: var(--acento-suave); color: var(--acento); border-color: transparent; }
+  .cadena b { font-weight: 400; opacity: 0.5; }
+  .texto { min-height: 132px; max-height: 46vh; overflow-y: auto; font-size: 19px; line-height: 1.55; overflow-wrap: anywhere; }
+  .texto p { margin: 0 0 10px; }
+  .texto .vacio { color: var(--tenue); font-size: 15px; }
+  .provisional { color: var(--tenue); }
+  .pie { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--raya); font-size: 12px; color: var(--tenue); }
+  .pie .datos { font-variant-numeric: tabular-nums; }
+  .botones { display: flex; gap: 6px; }
+  .mini { font: inherit; font-size: 13px; color: var(--tinta); background: none; border: 1px solid var(--raya); border-radius: 8px; padding: 4px 10px; cursor: pointer; }
+  .mini:hover { background: var(--fondo); }
+
+  .soltar { display: grid; place-items: center; text-align: center; gap: 4px; padding: 24px 12px; border: 1.5px dashed var(--raya); border-radius: 11px; color: var(--tenue); cursor: pointer; transition: background 0.15s, border-color 0.15s; }
+  .soltar strong { color: var(--tinta); font-weight: 600; }
+  .soltar.encima { border-color: var(--acento); background: var(--acento-suave); color: var(--acento); }
+  .fichero { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--raya); }
+  .fichero .cab { display: flex; justify-content: space-between; align-items: center; gap: 10px; font-size: 13px; color: var(--tenue); }
+  .fichero .cab b { color: var(--tinta); font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .fichero p { margin: 8px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .fichero.error p { color: var(--alerta); }
+
+  .aviso { background: var(--alerta-suave); color: var(--alerta); border-radius: 11px; padding: 10px 14px; font-size: 14px; display: flex; justify-content: space-between; gap: 12px; }
+  .aviso button { font: inherit; background: none; border: 0; color: inherit; cursor: pointer; padding: 0 2px; }
+  [hidden] { display: none !important; }
+  @media (max-width: 480px) { .dos { grid-template-columns: 1fr; } .texto { font-size: 17px; } }
+  @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>trujamán<small id="prueba" hidden>modo prueba</small></h1>
+    <div class="estado cargando" id="estado" role="status"><span class="punto"></span><span id="estadoTexto">Conectando…</span></div>
+  </header>
+
+  <div class="aviso" id="aviso" hidden role="alert"><span id="avisoTexto"></span><button id="avisoCerrar" aria-label="Cerrar aviso">✕</button></div>
+
+  <section aria-label="Escuchar">
+    <div class="dos">
+      <label class="campo">Entrada
+        <select id="entrada"></select>
+        <div class="nivel" id="nivel" aria-hidden="true"><i></i></div>
+      </label>
+      <label class="campo">Salida
+        <select id="salida"></select>
+      </label>
+    </div>
+
+    <div class="modo" role="group" aria-label="Qué hacer con lo que digo">
+      <button type="button" data-modo="traducir" aria-pressed="true">Traducir al inglés</button>
+      <button type="button" data-modo="transcribir" aria-pressed="false">Solo transcribir</button>
+    </div>
+
+    <div class="opciones" id="opcionesVoz">
+      <label><input type="checkbox" id="hablar" checked> Leer en voz alta</label>
+      <select id="voz" aria-label="Voz"></select>
+      <label title="Con cascos traduce mientras hablas. Con altavoces espera a cada pausa, para no oírse a sí mismo.">
+        <input type="checkbox" id="cascos"> Uso cascos <small id="cascosPista"></small>
+      </label>
+    </div>
+
+    <button class="principal" id="boton" disabled>Escuchar</button>
+  </section>
+
+  <section aria-label="En vivo">
+    <div class="cadena" aria-hidden="true">
+      <span id="pasoMicro">Micro</span><b>→</b><span id="pasoWhisper">Whisper</span><b>→</b><span id="pasoVoz">Voz</span>
+    </div>
+    <div class="texto" id="texto" aria-live="polite"><p class="vacio" id="vacio">Pulsa Escuchar y habla en español.</p></div>
+    <div class="pie">
+      <span class="datos" id="datos">&nbsp;</span>
+      <span class="botones">
+        <button class="mini" id="copiar">Copiar</button>
+        <button class="mini" id="limpiar">Limpiar</button>
+      </span>
+    </div>
+  </section>
+
+  <section aria-label="Ficheros">
+    <h2>Audio o vídeo grabado</h2>
+    <div class="soltar" id="soltar" tabindex="0" role="button" aria-label="Elegir un fichero de audio o vídeo">
+      <strong>Suelta aquí un audio o un vídeo</strong>
+      <span>o haz clic para elegirlo · se hace lo marcado arriba: <span id="soltarModo">traducir al inglés</span></span>
+    </div>
+    <input type="file" id="elegir" accept="audio/*,video/*" multiple hidden>
+    <div id="ficheros"></div>
+  </section>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const recordado = clave => { try { return localStorage.getItem(clave); } catch { return null; } };
+const recordar = (clave, valor) => { try { localStorage.setItem(clave, valor); } catch {} };
+
+let modo = recordado("modo") === "transcribir" ? "transcribir" : "traducir";
+let modelos = {}, dispositivos = { entradas: [], salidas: [], voces: [] };
+let escuchando = false, cascosManual = recordado("cascos");   // null = lo decide la salida
+let parrafo = null, provisional = null;
+
+// ---- Estado y avisos ---------------------------------------------------------
+function pintarEstado(conectado = true) {
+  const caja = $("estado"), valores = Object.values(modelos);
+  let clase = "cargando", texto = "Cargando modelos…";
+  if (!conectado) { clase = "mal"; texto = "Sin conexión con trujamán"; }
+  else if (valores.some(v => v === "falta" || v === "error")) { clase = "mal"; texto = "Falta un modelo: scripts/doctor.sh --arreglar"; }
+  else if (valores.length && valores.every(v => v === "listo")) { clase = "listo"; texto = "Listo"; }
+  caja.className = "estado " + clase;
+  $("estadoTexto").textContent = texto;
+  $("boton").disabled = !conectado || (!escuchando && modelos[modo] !== "listo");
+}
+function avisar(texto) { $("avisoTexto").textContent = texto; $("aviso").hidden = false; }
+$("avisoCerrar").onclick = () => { $("aviso").hidden = true; };
+
+// ---- Dispositivos ------------------------------------------------------------
+function rellenar(select, lista, clave) {
+  const elegido = recordado(clave);                 // lo que eligió el usuario, si sigue enchufado
+  const porDefecto = lista.find(d => d.predeterminado);
+  select.textContent = "";
+  for (const d of lista) {
+    const opcion = new Option(d.nombre + (d.predeterminado ? "  · predeterminado" : ""), d.nombre);
+    opcion.dataset.integrado = d.integrado ? "1" : "";
+    select.add(opcion);
+  }
+  const valor = lista.some(d => d.nombre === elegido) ? elegido : (porDefecto || lista[0] || {}).nombre;
+  if (valor) select.value = valor;
+  select.disabled = !lista.length;
+}
+function pintarDispositivos() {
+  rellenar($("entrada"), dispositivos.entradas, "entrada");
+  rellenar($("salida"), dispositivos.salidas, "salida");
+  const vistas = new Set(), voces = [];
+  for (const v of [...dispositivos.voces].sort((a, b) => b.calidad - a.calidad)) {
+    if (!v.idioma.startsWith("en") || vistas.has(v.nombre)) continue;
+    vistas.add(v.nombre); voces.push(v.nombre);
+  }
+  const voz = $("voz"), elegida = recordado("voz");
+  voz.textContent = "";
+  for (const nombre of voces) voz.add(new Option(nombre, nombre));
+  voz.value = voces.includes(elegida) ? elegida : (voces.includes("Samantha") ? "Samantha" : voces[0] || "");
+  pintarCascos();
+}
+function pintarCascos() {
+  const opcion = $("salida").selectedOptions[0];
+  const altavoces = opcion ? opcion.dataset.integrado === "1" : true;
+  $("cascos").checked = cascosManual === null ? !altavoces : cascosManual === "1";
+  $("cascosPista").textContent = $("cascos").checked ? "· traduce mientras hablas" : "· frase a frase";
+}
+$("entrada").onchange = e => recordar("entrada", e.target.value);
+$("salida").onchange = e => { recordar("salida", e.target.value); cascosManual = null; try { localStorage.removeItem("cascos"); } catch {} pintarCascos(); };
+$("voz").onchange = e => recordar("voz", e.target.value);
+$("cascos").onchange = e => { cascosManual = e.target.checked ? "1" : "0"; recordar("cascos", cascosManual); pintarCascos(); };
+
+// ---- Modo --------------------------------------------------------------------
+function pintarModo() {
+  for (const b of document.querySelectorAll(".modo button")) b.setAttribute("aria-pressed", b.dataset.modo === modo);
+  $("opcionesVoz").hidden = modo !== "traducir";
+  $("voz").hidden = !$("hablar").checked;
+  $("pasoVoz").hidden = $("pasoVoz").previousElementSibling.hidden = modo !== "traducir" || !$("hablar").checked;
+  $("soltarModo").textContent = modo === "traducir" ? "traducir al inglés" : "transcribir";
+  pintarEstado();
+}
+for (const b of document.querySelectorAll(".modo button")) b.onclick = () => {
+  if (escuchando) return avisar("Para de escuchar antes de cambiar de modo.");
+  modo = b.dataset.modo; recordar("modo", modo); pintarModo();
+};
+$("hablar").onchange = pintarModo;
+
+// ---- Escuchar ----------------------------------------------------------------
+async function orden(ruta, cuerpo) {
+  const r = await fetch(ruta, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(cuerpo || {}) });
+  const datos = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(datos.error || "No se ha podido.");
+  return datos;
+}
+$("boton").onclick = async () => {
+  try {
+    if (escuchando) return await orden("/api/parar");
+    $("aviso").hidden = true;
+    await orden("/api/empezar", {
+      modo, micro: $("entrada").value, salida: $("salida").value, voz: $("voz").value,
+      cascos: $("cascos").checked, hablar: $("hablar").checked,
+    });
+  } catch (error) { avisar(error.message); }
+};
+function pintarEscucha(si) {
+  escuchando = si;
+  const boton = $("boton");
+  boton.textContent = si ? "Parar" : "Escuchar";
+  boton.classList.toggle("activo", si);
+  for (const id of ["entrada", "salida", "voz", "hablar", "cascos"]) $(id).disabled = si || ((id === "entrada" || id === "salida") && !$(id).options.length);
+  if (!si) { $("nivel").firstElementChild.style.width = "0"; cerrarParrafo(); encender("pasoMicro", false); }
+  pintarEstado();
+}
+
+// ---- Texto en vivo -----------------------------------------------------------
+function asegurarParrafo() {
+  if (parrafo) return;
+  $("vacio").hidden = true;
+  parrafo = document.createElement("p");
+  provisional = document.createElement("span");
+  provisional.className = "provisional";
+  parrafo.append(provisional);
+  $("texto").append(parrafo);
+}
+function alFinal() { const t = $("texto"); t.scrollTop = t.scrollHeight; }
+function ponerFirme(texto) {
+  asegurarParrafo();
+  provisional.before(document.createTextNode(texto + " "));
+  provisional.textContent = "";
+  alFinal();
+}
+function ponerProvisional(texto) {
+  if (!texto && !parrafo) return;
+  asegurarParrafo();
+  provisional.textContent = texto;
+  alFinal();
+}
+function cerrarParrafo() {
+  if (!parrafo) return;
+  provisional.remove();
+  if (!parrafo.textContent.trim()) parrafo.remove();
+  parrafo = provisional = null;
+}
+function textoEnVivo() { return [...$("texto").querySelectorAll("p:not(.vacio)")].map(p => p.textContent.trim()).filter(Boolean).join("\n"); }
+const apagados = {};
+function encender(id, si, ms) {
+  $(id).classList.toggle("on", si);
+  clearTimeout(apagados[id]);
+  if (si && ms) apagados[id] = setTimeout(() => $(id).classList.remove("on"), ms);
+}
+async function copiar(texto, boton) {
+  if (!texto) return;
+  try { await navigator.clipboard.writeText(texto); } catch { return avisar("El navegador no deja copiar al portapapeles."); }
+  const antes = boton.textContent; boton.textContent = "Copiado"; setTimeout(() => { boton.textContent = antes; }, 1200);
+}
+$("copiar").onclick = e => copiar(textoEnVivo(), e.target);
+$("limpiar").onclick = () => {
+  cerrarParrafo();
+  for (const p of $("texto").querySelectorAll("p:not(.vacio)")) p.remove();
+  $("vacio").hidden = false; $("datos").innerHTML = "&nbsp;";
+};
+
+// ---- Eventos del servidor ----------------------------------------------------
+const al = {
+  estado(e) { modelos = e.modelos; dispositivos = e.dispositivos; $("prueba").hidden = !e.prueba; pintarDispositivos(); pintarEscucha(e.escuchando); },
+  modelos(e) { modelos = e.modelos; pintarEstado(); },
+  dispositivos(e) { dispositivos = e; if (!escuchando) pintarDispositivos(); },
+  escuchando() { pintarEscucha(true); },
+  parado() { pintarEscucha(false); },
+  terminado() {},
+  nivel(e) {
+    $("nivel").firstElementChild.style.width = Math.min(100, Math.sqrt(e.v) * 170) + "%";
+    $("nivel").classList.toggle("voz", e.voz);
+    encender("pasoMicro", e.voz);
+  },
+  provisional(e) {
+    ponerProvisional(e.texto);
+    encender("pasoWhisper", true, 350);
+    $("datos").textContent = `${e.pasadas} pasadas · la última tardó ${e.tarda.toFixed(2).replace(".", ",")} s`;
+  },
+  firme(e) { ponerFirme(e.texto); encender("pasoWhisper", true, 350); encender("pasoVoz", true, 900); },
+  fin() { cerrarParrafo(); },
+  aviso(e) { avisar(e.texto); },
+};
+const fuente = new EventSource("/api/eventos");
+fuente.onmessage = m => { const e = JSON.parse(m.data); (al[e.tipo] || (() => {}))(e); };
+fuente.onopen = () => pintarEstado(true);
+fuente.onerror = () => { pintarEstado(false); };
+
+// ---- Ficheros ----------------------------------------------------------------
+const cola = [];
+let ocupado = false;
+function encolar(lista) {
+  for (const fichero of lista) {
+    const caja = document.createElement("div"); caja.className = "fichero";
+    const cab = document.createElement("div"); cab.className = "cab";
+    const nombre = document.createElement("b"); nombre.textContent = fichero.name;
+    const dato = document.createElement("span"); dato.textContent = "en cola";
+    cab.append(nombre, dato); caja.append(cab);
+    $("ficheros").prepend(caja);
+    cola.push({ fichero, caja, dato, ingles: modo === "traducir" });
+  }
+  siguiente();
+}
+async function siguiente() {
+  if (ocupado || !cola.length) return;
+  ocupado = true;
+  const { fichero, caja, dato, ingles } = cola.shift();
+  const inicio = Date.now();
+  const reloj = setInterval(() => { dato.textContent = `${ingles ? "traduciendo" : "transcribiendo"}… ${Math.round((Date.now() - inicio) / 1000)} s`; }, 250);
+  const parrafo = document.createElement("p");
+  try {
+    const r = await fetch(`/api/archivo?ingles=${ingles ? 1 : 0}&nombre=${encodeURIComponent(fichero.name)}`, { method: "POST", body: fichero });
+    const datos = await r.json();
+    if (!r.ok) throw new Error(datos.error || "No se ha podido.");
+    parrafo.textContent = datos.texto || "(sin voz reconocible)";
+    dato.textContent = `${ingles ? "traducido" : "transcrito"} en ${String(datos.segundos).replace(".", ",")} s  `;
+    const copia = Object.assign(document.createElement("button"), { className: "mini", textContent: "Copiar" });
+    copia.onclick = () => copiar(datos.texto, copia);
+    const baja = Object.assign(document.createElement("button"), { className: "mini", textContent: ".txt" });
+    baja.onclick = () => {
+      const enlace = Object.assign(document.createElement("a"), {
+        href: URL.createObjectURL(new Blob([datos.texto + "\n"], { type: "text/plain" })),
+        download: fichero.name.replace(/\.[^.]+$/, "") + (ingles ? ".en" : "") + ".txt",
+      });
+      enlace.click(); setTimeout(() => URL.revokeObjectURL(enlace.href), 1000);
+    };
+    const botones = Object.assign(document.createElement("span"), { className: "botones" });
+    botones.append(copia, baja);
+    caja.firstElementChild.append(botones);
+  } catch (error) {
+    caja.classList.add("error"); dato.textContent = "error"; parrafo.textContent = error.message;
+  }
+  clearInterval(reloj);
+  caja.append(parrafo);
+  ocupado = false;
+  siguiente();
+}
+const soltar = $("soltar");
+soltar.onclick = () => $("elegir").click();
+soltar.onkeydown = e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); $("elegir").click(); } };
+$("elegir").onchange = e => { encolar(e.target.files); e.target.value = ""; };
+// Soltar en cualquier parte de la ventana vale; así el navegador nunca abre el fichero.
+let dentro = 0;
+addEventListener("dragenter", e => { e.preventDefault(); dentro++; soltar.classList.add("encima"); });
+addEventListener("dragover", e => e.preventDefault());
+addEventListener("dragleave", () => { if (--dentro <= 0) { dentro = 0; soltar.classList.remove("encima"); } });
+addEventListener("drop", e => { e.preventDefault(); dentro = 0; soltar.classList.remove("encima"); if (e.dataTransfer.files.length) encolar(e.dataTransfer.files); });
+
+pintarModo();
+</script>
+</body>
+</html>
