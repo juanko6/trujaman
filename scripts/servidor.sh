@@ -3,6 +3,9 @@
 #   ./servidor.sh                 → http://127.0.0.1:8178
 #   PUERTO=9000 ./servidor.sh     otro puerto
 #   NO_ABRIR=1 ./servidor.sh      sin abrir el navegador (solo la API)
+#   NO_CERRAR=1 ./servidor.sh     no se apaga al cerrar la pestaña
+#
+# Se apaga solo unos segundos después de cerrar la pestaña, o con el botón Cerrar.
 #
 # La misma dirección sigue dando servicio a otras apps:
 #   curl -F file=@nota.m4a http://127.0.0.1:8178/inference              transcribe

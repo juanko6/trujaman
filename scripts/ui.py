@@ -15,12 +15,17 @@ También mantiene la API de siempre para otras apps:
     curl -F file=@nota.m4a http://127.0.0.1:8178/inference           transcribe
     curl -F file=@nota.m4a "http://127.0.0.1:8178/inference?ingles=1"  traduce
 
+Se apaga solo: unos segundos después de cerrar la última pestaña (o al pulsar Cerrar
+en la página), para y descarga los modelos. Con NO_ABRIR=1 o NO_CERRAR=1 se queda
+en marcha, que es lo que hace falta cuando solo se usa la API.
+
 Solo usa la biblioteca estándar. Escucha únicamente en 127.0.0.1.
 """
 import json
 import os
 import queue
 import re
+import select
 import shutil
 import signal
 import socket
@@ -49,6 +54,9 @@ MODELOS = {
     "traducir": ENT("MODELO_TRADUCIR", os.path.join(RAIZ, "modelos", "ggml-medium-q5_0.bin")),
 }
 MAX_FICHERO = 2 * 1024 ** 3                  # 2 GB
+# Cerrar la pestaña apaga trujamán, salvo que se use solo como API.
+AUTOCERRAR = not ENT("NO_ABRIR") and not ENT("NO_CERRAR")
+GRACIA = 5                                   # segundos sin ninguna pestaña antes de apagar (recargar no cuenta)
 
 tmp = tempfile.mkdtemp(prefix="trujaman.")
 cerrojo = threading.Lock()
@@ -61,6 +69,7 @@ estado = {
 }
 servidores = {}                              # modo → {"url":…, "proceso":…}
 sesion = None                                # el simultaneo.py en marcha, si lo hay
+sin_pagina_desde = None                      # cuándo se cerró la última pestaña (None = hay alguna, o nunca hubo)
 
 
 def registro(texto):
@@ -264,17 +273,26 @@ class Peticion(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "text/event-stream; charset=utf-8")
         self.send_header("Cache-Control", "no-store")
         self.end_headers()
+        global sin_pagina_desde
         cola = queue.Queue()
         with cerrojo:
             oyentes.append(cola)
+            sin_pagina_desde = None
         try:
             cola.put({"tipo": "estado", **estado})       # foto inicial
+            ultimo = time.time()
             while True:
                 try:
-                    evento = cola.get(timeout=15)
+                    evento = cola.get(timeout=0.5)
                     linea = "data: " + json.dumps(evento, ensure_ascii=False) + "\n\n"
                 except queue.Empty:
+                    # ¿Sigue ahí la pestaña? Si el navegador cerró, el socket se puede leer y no da nada.
+                    if select.select([self.connection], [], [], 0)[0] and not self.connection.recv(1, socket.MSG_PEEK):
+                        break
+                    if time.time() - ultimo < 15:
+                        continue
                     linea = ": sigo aquí\n\n"                # para que no se corte por inactividad
+                ultimo = time.time()
                 self.wfile.write(linea.encode())
                 self.wfile.flush()
         except (BrokenPipeError, ConnectionResetError, OSError):
@@ -282,6 +300,8 @@ class Peticion(BaseHTTPRequestHandler):
         finally:
             with cerrojo:
                 oyentes.remove(cola)
+                if not oyentes:
+                    sin_pagina_desde = time.time()
 
     def do_POST(self):
         if not self.permitido():
@@ -290,6 +310,12 @@ class Peticion(BaseHTTPRequestHandler):
         consulta = urllib.parse.parse_qs(url.query)
         ingles = consulta.get("ingles", ["1" if INGLES else "0"])[0] == "1"
         modo = "traducir" if ingles else "transcribir"
+
+        if url.path == "/api/cerrar":
+            self.responder(200, {"ok": True})
+            registro("Cerrado desde la página.")
+            threading.Timer(0.3, salir).start()          # deja salir la respuesta antes de apagar
+            return
 
         if url.path == "/api/parar":
             parar()
@@ -343,6 +369,18 @@ def salir(*_):
     os._exit(0)
 
 
+def vigilar_pestanas():
+    """Apaga trujamán cuando lleva GRACIA segundos sin ninguna pestaña abierta."""
+    while True:
+        time.sleep(1)
+        with cerrojo:
+            vacio = sin_pagina_desde is not None and not oyentes
+            tiempo = time.time() - sin_pagina_desde if vacio else 0
+        if vacio and tiempo >= GRACIA:
+            registro("No queda ninguna pestaña abierta: cierro trujamán.")
+            salir()
+
+
 def principal():
     direccion = f"http://127.0.0.1:{PUERTO}"
     try:
@@ -355,11 +393,15 @@ def principal():
     web.daemon_threads = True
     signal.signal(signal.SIGINT, salir)
     signal.signal(signal.SIGTERM, salir)
+    signal.signal(signal.SIGHUP, salir)          # cerrar la ventana de Terminal también limpia
 
-    registro(f"trujamán en {direccion}   (Ctrl+C para cerrar)")
+    cierre = "se cierra solo al cerrar la pestaña" if AUTOCERRAR else "Ctrl+C para cerrar"
+    registro(f"trujamán en {direccion}   ({cierre})")
     for modo in MODELOS:
         threading.Thread(target=arrancar_whisper, args=(modo,), daemon=True).start()
     threading.Thread(target=vigilar_dispositivos, daemon=True).start()
+    if AUTOCERRAR:
+        threading.Thread(target=vigilar_pestanas, daemon=True).start()
     if not ENT("NO_ABRIR"):
         subprocess.Popen(["open", direccion])
     try:

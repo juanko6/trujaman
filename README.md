@@ -75,8 +75,15 @@ La primera vez, macOS pedirá permiso de micrófono para la app desde la que lo 
 (Terminal, iTerm, VS Code…). Sin ese permiso el micro entrega silencio y no da ningún
 error; la página avisa a los 4 s si pasa.
 
+**Para cerrarlo** basta con cerrar la pestaña del navegador: a los pocos segundos
+trujamán se apaga solo y descarga los modelos. También vale el botón *Cerrar* de la
+página, `Ctrl+C` o cerrar la ventana de Terminal. Recargar la página no lo apaga.
+
+Si lo usas solo como API para otras apps, arráncalo con `NO_ABRIR=1` (no abre el
+navegador) o `NO_CERRAR=1` (abre la página, pero no se apaga al cerrarla): así se
+queda en marcha hasta `Ctrl+C`.
+
 Solo escucha en tu máquina (`127.0.0.1`) y rechaza órdenes que vengan de otra web.
-Para cerrarlo, `Ctrl+C` o cierra la ventana de Terminal.
 
 ## Uso: la terminal
 
