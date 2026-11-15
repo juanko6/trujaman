@@ -1,0 +1,14 @@
+# Modelos de Whisper: pesan más de 1 GB; los baja scripts/doctor.sh --arreglar
+modelos/*
+!modelos/.gitkeep
+
+# Grabaciones y transcripciones propias
+audio/*
+!audio/.gitkeep
+
+# Locutor compilado: se genera con scripts/doctor.sh --arreglar
+scripts/locutor/locutor
+
+.DS_Store
+__pycache__/
+*.parcial
