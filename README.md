@@ -158,4 +158,9 @@ Más casos en la [guía](GUIA.md#9-problemas-típicos).
 
 ## Licencia
 
-[MIT](LICENSE). Los modelos de Whisper y whisper.cpp tienen sus propias licencias (también MIT).
+[Apache 2.0](LICENSE). Los modelos de Whisper y whisper.cpp tienen sus propias licencias (MIT).
+
+## Contribuir
+
+La rama `main` está protegida: los cambios entran por *pull request* y necesitan la
+revisión del autor antes de fusionarse.
