@@ -158,7 +158,7 @@ Más casos en la [guía](GUIA.md#9-problemas-típicos).
 
 ## Licencia
 
-[Apache 2.0](LICENSE). Los modelos de Whisper y whisper.cpp tienen sus propias licencias (MIT).
+[MIT](LICENSE). Los modelos de Whisper y whisper.cpp tienen sus propias licencias (también MIT).
 
 ## Contribuir
 
