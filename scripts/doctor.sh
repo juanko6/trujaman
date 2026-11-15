@@ -53,9 +53,14 @@ else
   mal "no se pudo compilar" "xcode-select --install"
 fi
 
+echo "Interfaz"
+for f in ui.py ui.html simultaneo.py; do
+  [[ -s "$RAIZ/scripts/$f" ]] && ok "$f" || mal "$f" "falta el fichero: git checkout scripts/$f"
+done
+
 echo
 if [[ $FALTA -eq 0 ]]; then
-  echo "Todo listo. Prueba: scripts/dictar.sh 10"
+  echo "Todo listo. Abre la interfaz: scripts/servidor.sh (o doble clic en Trujaman.command)"
 else
   echo "Falta algo: mira las líneas con ✗."
 fi

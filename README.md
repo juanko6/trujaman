@@ -6,6 +6,12 @@ Voz a texto en el Mac, sin internet ni APIs de pago. Transcribe en español, tra
 inglés, lo lee en alto y hace de intérprete en tiempo real. Todo corre en local con
 [whisper.cpp](https://github.com/ggerganov/whisper.cpp).
 
+Se maneja desde una página local, sin tocar la terminal: eliges micrófono y salida,
+pulsas *Escuchar* y ves la traducción formarse mientras hablas. También acepta audios y
+vídeos arrastrados a la ventana.
+
+![La interfaz de trujamán traduciendo en vivo](docs/interfaz.jpg)
+
 Es un banco de pruebas: scripts pequeños para ver qué da de sí Whisper y llevarse las
 piezas a una app. La explicación larga (modelos, medidas, por qué cada decisión) está en
 [GUIA.md](GUIA.md).
@@ -17,7 +23,7 @@ piezas a una app. La explicación larga (modelos, medidas, por qué cada decisi�
 | Mac con Apple Silicon | Whisper usa la GPU (Metal) | |
 | `whisper-cpp` | Ejecuta los modelos: `whisper-cli`, `whisper-server`, `whisper-stream` | `brew install whisper-cpp` |
 | `ffmpeg` | Graba del micro y convierte audio | `brew install ffmpeg` |
-| `python3` (3.9 o más) | Motor del intérprete. Sin paquetes extra: solo la biblioteca estándar | Viene con las herramientas de Xcode, o `brew install python` |
+| `python3` (3.9 o más) | Interfaz web y motor del intérprete. Sin paquetes extra: solo la biblioteca estándar | Viene con las herramientas de Xcode, o `brew install python` |
 | `swiftc` | Compila el locutor (la voz del intérprete) | `xcode-select --install` |
 | `say` | Voces para leer en alto | Viene con macOS |
 | 2 modelos (unos 1,1 GB) | `large-v3-turbo` transcribe; `medium` traduce | Los baja `doctor.sh --arreglar` |
@@ -44,13 +50,37 @@ locutor. Se puede repetir: lo que ya está no lo vuelve a hacer.
 
 Si algo deja de funcionar, lo primero es `scripts/doctor.sh`.
 
-La primera vez que grabes, macOS pedirá permiso de micrófono para la app desde la que
-lanzas los scripts (Terminal, iTerm, VS Code…). Sin ese permiso el micro entrega
-silencio y no da ningún error.
+## Uso: la interfaz
 
-## Uso
+Doble clic en `Trujaman.command`, o desde la terminal:
 
-Todo se lanza desde la carpeta del proyecto.
+```bash
+scripts/servidor.sh
+```
+
+Se abre `http://127.0.0.1:8178` en el navegador. La página sale al instante; los
+modelos tardan unos 4 s en cargar y el punto de arriba pasa a *Listo*.
+
+- **Entrada y salida:** los micrófonos y las salidas de audio se detectan solos y la
+  lista se actualiza al conectar o quitar un dispositivo.
+- **Traducir al inglés / Solo transcribir:** vale para el micro y para los ficheros.
+- **Uso cascos:** se marca sola según la salida elegida. Con cascos traduce mientras
+  hablas; con los altavoces del Mac espera a cada pausa, para no oírse a sí mismo.
+- **En vivo:** el texto firme sale en negro y lo que Whisper aún está decidiendo, en
+  gris. Los pasos *Micro → Whisper → Voz* se encienden cuando trabaja cada uno.
+- **Audio o vídeo grabado:** suéltalo en la ventana; el texto se puede copiar o
+  descargar como `.txt`.
+
+La primera vez, macOS pedirá permiso de micrófono para la app desde la que lo lanzas
+(Terminal, iTerm, VS Code…). Sin ese permiso el micro entrega silencio y no da ningún
+error; la página avisa a los 4 s si pasa.
+
+Solo escucha en tu máquina (`127.0.0.1`) y rechaza órdenes que vengan de otra web.
+Para cerrarlo, `Ctrl+C` o cierra la ventana de Terminal.
+
+## Uso: la terminal
+
+Todo lo de la interfaz se puede hacer también con scripts, desde la carpeta del proyecto.
 
 | Quiero… | Comando |
 |---|---|
@@ -64,7 +94,7 @@ Todo se lanza desde la carpeta del proyecto.
 | Solo subtítulos en inglés mientras hablo | `SIN_VOZ=1 scripts/interprete.sh` |
 | Subtítulos en español mientras hablo | `scripts/en-vivo.sh` |
 | Leer un texto en alto | `scripts/hablar.sh "Hello there"` |
-| Dar servicio a otra app por HTTP | `scripts/servidor.sh` |
+| Abrir la interfaz y dar servicio a otras apps por HTTP | `scripts/servidor.sh` |
 | Ver los micrófonos | `scripts/grabar.sh --lista` |
 
 Los ajustes van como variables delante del comando:
@@ -121,16 +151,31 @@ la frase entera y se dice lo que faltaba. Va entre 1,5 y 2 s por detrás de la v
 Con altavoces no puede ser simultáneo: el micro oiría la traducción. Entonces se
 silencia mientras el locutor habla y va frase a frase.
 
+**La interfaz** no toca el audio: es una página que manda órdenes y pinta lo que pasa.
+
+```
+navegador ──órdenes (POST /api/…)──▶ ui.py ──▶ 2 whisper-server (transcribir y traducir)
+          ◀──eventos en vivo (SSE)──        ├─▶ simultaneo.py (uno por sesión de escucha)
+                                             └─▶ locutor (voz y lista de dispositivos)
+```
+
+`ui.py` usa solo la biblioteca estándar de Python y `ui.html` es un único fichero sin
+librerías ni CDN.
+
 ## Qué hay en la carpeta
 
 ```
 trujaman/
 ├── README.md          esto
 ├── GUIA.md            la explicación larga, paso a paso
+├── Trujaman.command   doble clic: arranca y abre la interfaz
 ├── modelos/           los .bin de Whisper (no van a git: pesan 1,1 GB)
 ├── audio/             grabaciones y sus .txt
 └── scripts/
     ├── doctor.sh      revisa dependencias; con --arreglar baja modelos y compila
+    ├── servidor.sh    arranca la interfaz web y la API
+    ├── ui.py          el servidor de la interfaz
+    ├── ui.html        la página
     ├── comun.sh       configuración que comparten todos
     ├── grabar.sh      micro → WAV
     ├── transcribir.sh audio → texto (o traducción)
@@ -139,8 +184,7 @@ trujaman/
     ├── interprete.sh  arranca el intérprete
     ├── simultaneo.py  el motor del intérprete
     ├── locutor/       la voz del intérprete (Swift)
-    ├── en-vivo.sh     subtítulos en el mismo idioma
-    └── servidor.sh    API HTTP para otras apps
+    └── en-vivo.sh     subtítulos en el mismo idioma
 ```
 
 ## Si algo falla

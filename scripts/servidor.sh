@@ -1,10 +1,24 @@
 #!/usr/bin/env bash
-# Levanta Whisper como servicio HTTP local para que lo use cualquier app.
-#   curl -F file=@nota.m4a http://127.0.0.1:8178/inference
-# Con INGLES=1 arranca con el modelo que traduce; traduce todas las
-# peticiones sin pedir nada más. Puede convivir con el otro en otro puerto:
-#   INGLES=1 PUERTO=8179 ./servidor.sh
+# Levanta trujamán con su interfaz web y abre el navegador:
+#   ./servidor.sh                 → http://127.0.0.1:8178
+#   PUERTO=9000 ./servidor.sh     otro puerto
+#   NO_ABRIR=1 ./servidor.sh      sin abrir el navegador (solo la API)
+#
+# La misma dirección sigue dando servicio a otras apps:
+#   curl -F file=@nota.m4a http://127.0.0.1:8178/inference              transcribe
+#   curl -F file=@nota.m4a "http://127.0.0.1:8178/inference?ingles=1"   traduce al inglés
+# Con INGLES=1, /inference traduce sin tener que pedirlo.
+#
+# El trabajo lo hace ui.py; esto prepara el entorno.
 set -euo pipefail
-source "$(dirname "$0")/comun.sh"
-echo "Whisper escuchando en http://127.0.0.1:$PUERTO/inference" >&2
-exec whisper-server -m "$MODELO" -l "$IDIOMA" --host 127.0.0.1 --port "$PUERTO" --convert -bs 5 ${INGLES:+--translate}
+DIR="$(cd "$(dirname "$0")" && pwd)"
+export PUERTO="${PUERTO:-8178}" IDIOMA="${IDIOMA:-es}"
+export LOCUTOR="$DIR/locutor/locutor"
+
+if [[ ! -x "$LOCUTOR" || "$DIR/locutor/locutor.swift" -nt "$LOCUTOR" ]]; then
+  echo "Compilando el locutor (solo la primera vez)…" >&2
+  swiftc -O "$DIR/locutor/locutor.swift" -o "$LOCUTOR" 2>/dev/null \
+    || echo "No se pudo compilar el locutor: scripts/doctor.sh" >&2
+fi
+
+exec python3 "$DIR/ui.py"

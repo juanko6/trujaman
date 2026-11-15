@@ -19,7 +19,9 @@ trujaman/
     ├── simultaneo.py  (lo usa el intérprete) el motor: traduce mientras hablas
     ├── locutor/       (lo usa el intérprete) voz siempre cargada, en Swift
     ├── en-vivo.sh     transcripción mientras hablas
-    └── servidor.sh    API HTTP local para otras apps
+    ├── servidor.sh    interfaz web + API HTTP local para otras apps
+    ├── ui.py          (lo usa el servidor) backend de la interfaz
+    └── ui.html        (lo usa el servidor) la página
 ```
 
 ---
@@ -260,27 +262,40 @@ Para probar sin micro: `FICHERO=audio.wav MEDIR=1 SIN_VOZ=1 scripts/interprete.s
 Para traducir a otros idiomas, Whisper no basta: hay que transcribir y pasarle el
 texto a un LLM, local o por API.
 
-## 7. Usarlo desde cualquier app: el servidor
+## 7. La interfaz web y el servidor para otras apps
 
 ```bash
-scripts/servidor.sh          # escucha en http://127.0.0.1:8178
+scripts/servidor.sh          # abre http://127.0.0.1:8178
 ```
 
-Cualquier app le manda el audio por HTTP y recibe el texto. Gracias a `--convert`,
-acepta cualquier formato:
+Hace dos cosas en la misma dirección: sirve la interfaz (explicada en el
+[README](README.md#uso-la-interfaz)) y da servicio por HTTP a cualquier otra app. Con
+`NO_ABRIR=1` no abre el navegador.
+
+Por dentro, `ui.py` arranca dos `whisper-server`, uno con cada modelo, y deja los dos
+cargados. Medido en este Mac: la página responde a los 0,09 s y los dos modelos están
+listos a los 3,7 s. Para escuchar, lanza `simultaneo.py` con `EVENTOS=1`, que en vez de
+escribir texto suelta una línea JSON por cada cosa que pasa (nivel del micro, texto
+provisional, trozo firme, fin de frase), y la página las recibe por Server-Sent Events.
+Los dispositivos los lista `locutor --dispositivos` cada 2 s.
+
+### La API
+
+Cualquier app le manda el audio y recibe el texto. Acepta cualquier formato:
 
 ```bash
 curl -F file=@audio/prueba.aiff -F response_format=json http://127.0.0.1:8178/inference
 # {"text":" Hola, esto es una prueba de transcripción en local con Visper. ..."}
 ```
 
-Para traducir al inglés, se levanta un segundo servidor con el modelo medium en otro
-puerto. Puede convivir con el primero, y traduce todo lo que le llega:
+Para traducir al inglés, la misma ruta con `?ingles=1` (usa el modelo medium, que ya
+está cargado):
 
 ```bash
-INGLES=1 PUERTO=8179 scripts/servidor.sh
-curl -F file=@nota.m4a -F response_format=text http://127.0.0.1:8179/inference
+curl -F file=@nota.m4a -F response_format=text "http://127.0.0.1:8178/inference?ingles=1"
 ```
+
+Con `INGLES=1 scripts/servidor.sh`, `/inference` traduce sin tener que pedirlo.
 
 Parámetros útiles del formulario: `response_format` (`json`, `text`, `srt`, `vtt`,
 `verbose_json`), `language`, `prompt` (el vocabulario) y `temperature`.
