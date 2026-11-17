@@ -1,0 +1,11 @@
+[package]
+name = "trujaman"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+
+[dependencies]
+nucleo = { path = "../nucleo" }
+gpui = "=0.2.2"
+async-channel = "2"
+crossbeam-channel = "0.5"

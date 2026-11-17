@@ -1,0 +1,14 @@
+[package]
+name = "nucleo"
+description = "Micro, Whisper, estabilizador y voz de Trujamán, sin interfaz"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+
+[dependencies]
+anyhow = "1"
+cpal = "0.18"
+crossbeam-channel = "0.5"
+hound = "3"
+tts = "0.26"
+whisper-rs = { version = "0.16", features = ["metal"] }

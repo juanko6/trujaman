@@ -171,6 +171,9 @@ trujaman/
 ├── Trujaman.command   doble clic: arranca y abre la interfaz
 ├── modelos/           los .bin de Whisper (no van a git: pesan 1,1 GB)
 ├── audio/             grabaciones y sus .txt
+├── nucleo/            prototipo en Rust: micro → Whisper → voz, sin interfaz
+├── app/               prototipo en Rust: la ventana (GPUI)
+├── Cargo.toml         el espacio de trabajo de Rust
 └── scripts/
     ├── doctor.sh      revisa dependencias; con --arreglar baja modelos y compila
     ├── servidor.sh    arranca la interfaz web y la API
@@ -186,6 +189,46 @@ trujaman/
     ├── locutor/       la voz del intérprete (Swift)
     └── en-vivo.sh     subtítulos en el mismo idioma
 ```
+
+## Prototipo: app de escritorio en Rust
+
+En `nucleo/` y `app/` hay un prototipo que hace lo mismo que el intérprete sin Python ni
+página web: una app nativa del Mac hecha con [GPUI](https://www.gpui.rs).
+
+- **`nucleo/`**: micro (cpal) → detección de voz por volumen → Whisper (whisper-rs, con
+  Metal; los dos modelos se cargan una vez desde `modelos/`) → el estabilizador de
+  `simultaneo.py` → voz del sistema (crate `tts`). Corre en su propio hilo y cuenta lo
+  que pasa con eventos: trozo firme, texto provisional y estado Micro → Whisper → Voz.
+- **`app/`**: la ventana, con lo esencial de `ui.html`: micro y salida, *Transcribir* o
+  *Traducir*, *Leer en voz alta*, *Uso cascos*, el texto que se va formando y Copiar.
+
+Con cascos traduce mientras hablas; con los altavoces del Mac va frase a frase y no
+escucha mientras habla la voz, para no oírse a sí misma.
+
+Hace falta [Rust](https://rustup.rs) y los modelos en `modelos/` (los baja
+`scripts/doctor.sh --arreglar`).
+
+```bash
+app/empaquetar.sh --abrir      # compila y abre target/Trujaman.app
+```
+
+La primera vez macOS pide permiso de micrófono para Trujaman.
+
+Prueba de latencia sin micro: pasa una frase de unos 8 s (la genera con la voz Mónica si
+no está en `audio/frase-prueba.wav`) a ritmo real por el núcleo y mide cuándo sale cada
+trozo.
+
+```bash
+cargo run --release -p nucleo --example latencia -- --veces 3
+```
+
+Con `--trozos fichero` aplica las mismas cuentas a la salida de `simultaneo.py` con
+`MEDIR=1`, para comparar las dos versiones. Otras ayudas: `--example micro` lista los
+micros y enseña el volumen; con `TRUJAMAN_DEPURAR=1` la app escribe los eventos en la
+terminal y empieza a escuchar sola.
+
+Lo que aún no hace: la voz sale siempre por la salida predeterminada de macOS, no
+traduce ficheros arrastrados y no hay versión para Windows ni Linux.
 
 ## Si algo falla
 

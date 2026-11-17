@@ -12,3 +12,6 @@ scripts/locutor/locutor
 .DS_Store
 __pycache__/
 *.parcial
+
+# Compilación de Rust
+/target
