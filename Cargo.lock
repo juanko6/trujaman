@@ -6056,9 +6056,12 @@ version = "0.1.0"
 dependencies = [
  "async-channel 2.5.0",
  "crossbeam-channel",
+ "dirs 5.0.1",
  "gpui",
  "nucleo",
  "resvg",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

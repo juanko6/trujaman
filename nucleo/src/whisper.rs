@@ -1,4 +1,4 @@
-//! Whisper dentro del proceso (whisper.cpp con Metal), con los modelos cargados una vez.
+//! Whisper dentro del proceso (whisper.cpp con Metal), con el modelo cargado una vez por modo.
 //!
 //! Sustituye a los dos `whisper-server` de la versión en Python: el audio ya no viaja
 //! por HTTP ni se empaqueta en WAV, se le pasa a whisper.cpp tal cual.
@@ -88,10 +88,28 @@ pub struct Peticion {
     pub vocabulario: String,
 }
 
-/// Los dos modelos, cargados una sola vez para toda la vida de la app.
+/// Los modelos cargados. La app carga solo el del modo en que está (cada uno ocupa
+/// medio giga largo en memoria); la prueba de latencia carga los dos.
 pub struct Modelos {
     pub turbo: Option<Arc<Modelo>>,
     pub medium: Option<Arc<Modelo>>,
+}
+
+/// El fichero del modelo que hace falta: medium para traducir, turbo para transcribir.
+pub fn nombre_para(traducir: bool) -> &'static str {
+    if traducir {
+        MEDIUM
+    } else {
+        TURBO
+    }
+}
+
+fn cargar_uno(carpeta: &Path, nombre: &str) -> Result<Arc<Modelo>, String> {
+    let ruta = carpeta.join(nombre);
+    if !ruta.exists() {
+        return Err(format!("Falta el modelo {} en {}", nombre, carpeta.display()));
+    }
+    Modelo::cargar(&ruta).map(Arc::new).map_err(|e| format!("{e:#}"))
 }
 
 impl Modelos {
@@ -99,13 +117,8 @@ impl Modelos {
     /// funcionando; el error se devuelve aparte para avisar.
     pub fn cargar(carpeta: &Path) -> (Self, Vec<String>) {
         let hilo = |nombre: &'static str| {
-            let ruta = carpeta.join(nombre);
-            std::thread::spawn(move || {
-                if !ruta.exists() {
-                    return Err(format!("Falta el modelo {} en {}", nombre, ruta.parent().unwrap().display()));
-                }
-                Modelo::cargar(&ruta).map(Arc::new).map_err(|e| format!("{e:#}"))
-            })
+            let carpeta = carpeta.to_path_buf();
+            std::thread::spawn(move || cargar_uno(&carpeta, nombre))
         };
         let (turbo, medium) = (hilo(TURBO), hilo(MEDIUM));
         let mut errores = Vec::new();
@@ -122,6 +135,12 @@ impl Modelos {
         };
         let modelos = Self { turbo: recoger(turbo), medium: recoger(medium) };
         (modelos, errores)
+    }
+
+    /// Solo el modelo de un modo; el otro se queda sin cargar.
+    pub fn cargar_para(carpeta: &Path, traducir: bool) -> Result<Self, String> {
+        let modelo = Some(cargar_uno(carpeta, nombre_para(traducir))?);
+        Ok(if traducir { Self { turbo: None, medium: modelo } } else { Self { turbo: modelo, medium: None } })
     }
 
     /// El modelo que toca: medium para traducir, turbo para transcribir.

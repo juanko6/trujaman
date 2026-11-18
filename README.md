@@ -196,14 +196,22 @@ En `nucleo/` y `app/` hay un prototipo que hace lo mismo que el intérprete sin 
 página web: una app nativa del Mac hecha con [GPUI](https://www.gpui.rs).
 
 - **`nucleo/`**: micro (cpal) → detección de voz por volumen → Whisper (whisper-rs, con
-  Metal; los dos modelos se cargan una vez desde `modelos/`) → el estabilizador de
+  Metal, con los modelos de `modelos/`) → el estabilizador de
   `simultaneo.py` → voz del sistema (crate `tts`). Corre en su propio hilo y cuenta lo
   que pasa con eventos: trozo firme, texto provisional y estado Micro → Whisper → Voz.
 - **`app/`**: la ventana, con lo esencial de `ui.html`: micro y salida, *Transcribir* o
   *Traducir*, *Leer en voz alta*, *Uso cascos*, el texto que se va formando y Copiar.
 
+La app solo tiene en memoria el modelo del modo en que está (`medium` para traducir,
+`large-v3-turbo` para transcribir): unos 800–900 MB en vez de 1,5 GB. Al cambiar de modo
+suelta uno y carga el otro, lo que tarda unos segundos.
+
 Con cascos traduce mientras hablas; con los altavoces del Mac va frase a frase y no
 escucha mientras habla la voz, para no oírse a sí misma.
+
+En *Ajustes* (⌘,) se elige el tema (sistema, claro u oscuro), con qué micro, salida,
+modo y voz arranca, y la letra y el tamaño del texto en vivo. Se guardan en
+`~/Library/Application Support/Trujaman/preferencias.json`.
 
 Hace falta [Rust](https://rustup.rs) y los modelos en `modelos/` (los baja
 `scripts/doctor.sh --arreglar`).

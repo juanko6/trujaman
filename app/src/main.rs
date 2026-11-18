@@ -3,98 +3,24 @@
 //! El núcleo (crate `nucleo`) escucha en su propio hilo y cuenta lo que pasa por un
 //! canal; aquí solo se pinta.
 
+mod comun;
+mod preferencias;
+mod ventanas;
+
 use std::sync::Arc;
 use std::time::Duration;
 
 use gpui::{
-    anchored, deferred, div, img, prelude::*, px, rgb, size, App, Application, Bounds, ClipboardItem, Context,
-    FontWeight, HighlightStyle, Hsla, Image, ImageFormat, MouseButton, ScrollHandle, SharedString, StyledText, Window,
-    WindowAppearance, WindowBounds, WindowOptions,
+    actions, div, prelude::*, px, App, Application, ClipboardItem, Context, FontWeight, HighlightStyle, KeyBinding,
+    Menu, MenuItem, ScrollHandle, SharedString, StyledText, Subscription, SystemMenuType, Window,
 };
 use nucleo::audio::{self, Dispositivo, Dispositivos};
 use nucleo::voz::Locutor;
 use nucleo::whisper::{carpeta_modelos, Modelos};
 use nucleo::{Ajustes, Evento, Fuente, Sesion};
 
-// ---- Colores --------------------------------------------------------------------
-// Los de ui.html, con el cobre rojizo del icono como acento. Los avisos van en ámbar
-// para no confundirse con él.
-
-#[derive(Clone, Copy)]
-struct Paleta {
-    fondo: Hsla,
-    papel: Hsla,
-    tinta: Hsla,
-    tenue: Hsla,
-    raya: Hsla,
-    /// El cobre vivo del icono: botones, casillas, bordes.
-    acento: Hsla,
-    /// El mismo cobre, más oscuro (o más claro, en oscuro), para texto pequeño.
-    acento_texto: Hsla,
-    acento_suave: Hsla,
-    sobre_acento: Hsla,
-    alerta: Hsla,
-    alerta_suave: Hsla,
-}
-
-fn paleta(window: &Window) -> Paleta {
-    let c = |x: u32| -> Hsla { rgb(x).into() };
-    match window.appearance() {
-        WindowAppearance::Dark | WindowAppearance::VibrantDark => Paleta {
-            fondo: c(0x151513),
-            papel: c(0x1e1e1b),
-            tinta: c(0xeceae3),
-            tenue: c(0x9a968b),
-            raya: c(0x33322d),
-            acento: c(0xf0573a),
-            acento_texto: c(0xff8a70),
-            acento_suave: c(0x3d2019),
-            sobre_acento: c(0xffffff),
-            alerta: c(0xf2c46d),
-            alerta_suave: c(0x3a2e14),
-        },
-        _ => Paleta {
-            fondo: c(0xf6f5f1),
-            papel: c(0xffffff),
-            tinta: c(0x1c1b18),
-            tenue: c(0x6f6c64),
-            raya: c(0xe2dfd6),
-            acento: c(0xf0573a),
-            acento_texto: c(0xc0391f),
-            acento_suave: c(0xfde6df),
-            sobre_acento: c(0xffffff),
-            alerta: c(0x8a5300),
-            alerta_suave: c(0xfbf0da),
-        },
-    }
-}
-
-// ---- Marca ----------------------------------------------------------------------
-
-/// La letra del nombre en la cabecera (de las que trae macOS).
-const LETRA_NOMBRE: &str = "Charter";
-
-/// El icono, el mismo dibujo del que sale el de la app (`examples/icono.rs`).
-///
-/// Se pasa a PNG aquí porque GPUI 0.2.2 pinta los SVG en color con el rojo y el azul
-/// cambiados (no pasa de RGBA a BGRA, como sí hace con los PNG).
-fn icono() -> Arc<Image> {
-    static ICONO: std::sync::OnceLock<Arc<Image>> = std::sync::OnceLock::new();
-    ICONO
-        .get_or_init(|| {
-            use resvg::{tiny_skia, usvg};
-            let svg = include_str!("../recursos/icono.svg");
-            let png = usvg::Tree::from_str(svg, &usvg::Options::default()).ok().and_then(|arbol| {
-                let lado = 128;
-                let mut lienzo = tiny_skia::Pixmap::new(lado, lado)?;
-                let k = lado as f32 / arbol.size().width();
-                resvg::render(&arbol, tiny_skia::Transform::from_scale(k, k), &mut lienzo.as_mut());
-                lienzo.encode_png().ok()
-            });
-            Arc::new(Image::from_bytes(ImageFormat::Png, png.unwrap_or_default()))
-        })
-        .clone()
-}
+use comun::{casilla, desplegable, etiqueta_dispositivo, logotipo, paleta, segmentado, Paleta, ALTO_BARRA, WEB};
+use preferencias::Preferencias;
 
 // ---- Estado -------------------------------------------------------------------
 
@@ -118,8 +44,11 @@ struct Parrafo {
 }
 
 struct Trujaman {
+    /// Solo el modelo del modo en que está: al cambiar de modo se suelta y se carga el otro.
     modelos: Option<Arc<Modelos>>,
     estado: EstadoModelos,
+    /// Cuenta las cargas, para descartar una que acaba cuando ya se ha cambiado de modo.
+    carga_id: u64,
     dispositivos: Dispositivos,
     voces: Vec<String>,
     entrada: Option<String>,
@@ -141,20 +70,25 @@ struct Trujaman {
     aviso: Option<String>,
     lista_abierta: Option<Lista>,
     scroll: ScrollHandle,
+    /// Las preferencias ya aplicadas, para ver qué cambia cuando se tocan en Ajustes.
+    prefs: Preferencias,
+    _al_cambiar_prefs: Subscription,
 }
 
 impl Trujaman {
     fn new(cx: &mut Context<Self>) -> Self {
-        let yo = Self {
+        let prefs = cx.global::<Preferencias>().clone();
+        let mut yo = Self {
             modelos: None,
             estado: EstadoModelos::Cargando,
+            carga_id: 0,
             dispositivos: audio::dispositivos(),
             voces: Vec::new(),
-            entrada: None,
-            salida: None,
-            voz: None,
-            traducir: true,
-            hablar: true,
+            entrada: prefs.entrada.clone(),
+            salida: prefs.salida.clone(),
+            voz: prefs.voz.clone(),
+            traducir: prefs.traducir,
+            hablar: prefs.hablar,
             cascos_manual: None,
             sesion: None,
             sesion_id: 0,
@@ -168,33 +102,11 @@ impl Trujaman {
             aviso: None,
             lista_abierta: None,
             scroll: ScrollHandle::new(),
+            prefs,
+            _al_cambiar_prefs: cx.observe_global::<Preferencias>(|this, cx| this.aplicar_prefs(cx)),
         };
 
-        // Los dos modelos, una sola vez, fuera del hilo de la interfaz.
-        cx.spawn(async move |this, cx| {
-            let carpeta = carpeta_modelos();
-            let (modelos, errores) = cx.background_executor().spawn(async move { Modelos::cargar(&carpeta) }).await;
-            let _ = this.update(cx, |this, cx| {
-                let empezar = depurar() && errores.is_empty();
-                this.estado =
-                    if errores.is_empty() { EstadoModelos::Listo } else { EstadoModelos::Mal(errores.join(" · ")) };
-                this.modelos = Some(Arc::new(modelos));
-                if empezar {
-                    this.entrada = std::env::var("TRUJAMAN_MICRO").ok();
-                    if let Ok(c) = std::env::var("TRUJAMAN_CASCOS") {
-                        this.cascos_manual = Some(c != "0");
-                    }
-                    eprintln!(
-                        "[trujamán] modelos listos; empiezo a escuchar ({:?}, cascos {})",
-                        this.entrada,
-                        this.cascos()
-                    );
-                    this.alternar_escucha(cx);
-                }
-                cx.notify();
-            });
-        })
-        .detach();
+        yo.cargar_modelo(depurar(), cx);
 
         // El locutor y sus voces en inglés.
         cx.spawn(async move |this, cx| {
@@ -210,8 +122,7 @@ impl Trujaman {
                 match voces {
                     Ok(v) => {
                         this.voces = v;
-                        let samantha = this.voces.iter().find(|n| n.starts_with("Samantha")).cloned();
-                        this.voz = samantha.or_else(|| this.voces.first().cloned());
+                        this.voz = this.voz_por_defecto();
                     }
                     Err(e) => this.aviso = Some(e),
                 }
@@ -239,6 +150,45 @@ impl Trujaman {
         yo
     }
 
+    /// La voz guardada en Ajustes si sigue instalada; si no, Samantha o la primera.
+    fn voz_por_defecto(&self) -> Option<String> {
+        let guardada = self.prefs.voz.clone().filter(|v| self.voces.contains(v));
+        let samantha = self.voces.iter().find(|n| n.starts_with("Samantha")).cloned();
+        guardada.or(samantha).or_else(|| self.voces.first().cloned())
+    }
+
+    /// Lo que se cambia en Ajustes pasa a la ventana (si no está escuchando: lo que
+    /// suena no cambia a media sesión).
+    fn aplicar_prefs(&mut self, cx: &mut Context<Self>) {
+        let nuevas = cx.global::<Preferencias>().clone();
+        if self.sesion.is_none() {
+            let antes = &self.prefs;
+            if nuevas.entrada != antes.entrada {
+                self.entrada = nuevas.entrada.clone();
+            }
+            if nuevas.salida != antes.salida {
+                self.salida = nuevas.salida.clone();
+                self.cascos_manual = None;
+            }
+            if nuevas.traducir != antes.traducir {
+                self.traducir = nuevas.traducir;
+            }
+            if nuevas.hablar != antes.hablar {
+                self.hablar = nuevas.hablar;
+            }
+            let cambia_voz = nuevas.voz != antes.voz;
+            self.prefs = nuevas;
+            if cambia_voz {
+                self.voz = self.voz_por_defecto();
+            }
+            // Si ha cambiado el modo, el modelo que toca (no hace nada si ya está).
+            self.cargar_modelo(false, cx);
+        } else {
+            self.prefs = nuevas;
+        }
+        cx.notify();
+    }
+
     fn entrada_elegida(&self) -> Option<&Dispositivo> {
         elegido(&self.dispositivos.entradas, &self.entrada)
     }
@@ -249,6 +199,49 @@ impl Trujaman {
 
     fn cascos(&self) -> bool {
         self.cascos_manual.unwrap_or_else(|| !self.salida_elegida().is_none_or(|s| s.integrado))
+    }
+
+    /// Carga, fuera del hilo de la interfaz, el modelo del modo actual si no es el que
+    /// hay. El otro se suelta antes, para no tener los dos en memoria a la vez.
+    /// `empezar`: con `TRUJAMAN_DEPURAR`, se pone a escuchar en cuanto está.
+    fn cargar_modelo(&mut self, empezar: bool, cx: &mut Context<Self>) {
+        if self.listo() {
+            return;
+        }
+        self.modelos = None;
+        self.estado = EstadoModelos::Cargando;
+        self.carga_id += 1;
+        let (id, traducir) = (self.carga_id, self.traducir);
+        cx.spawn(async move |this, cx| {
+            let carpeta = carpeta_modelos();
+            let cargado = cx.background_executor().spawn(async move { Modelos::cargar_para(&carpeta, traducir) }).await;
+            let _ = this.update(cx, |this, cx| {
+                if this.carga_id != id {
+                    return;
+                }
+                match cargado {
+                    Ok(modelos) => {
+                        this.modelos = Some(Arc::new(modelos));
+                        this.estado = EstadoModelos::Listo;
+                        if empezar {
+                            this.entrada = std::env::var("TRUJAMAN_MICRO").ok();
+                            if let Ok(c) = std::env::var("TRUJAMAN_CASCOS") {
+                                this.cascos_manual = Some(c != "0");
+                            }
+                            eprintln!(
+                                "[trujamán] modelo listo; empiezo a escuchar ({:?}, cascos {})",
+                                this.entrada,
+                                this.cascos()
+                            );
+                            this.alternar_escucha(cx);
+                        }
+                    }
+                    Err(e) => this.estado = EstadoModelos::Mal(e),
+                }
+                cx.notify();
+            });
+        })
+        .detach();
     }
 
     fn listo(&self) -> bool {
@@ -410,11 +403,19 @@ fn elegido<'a>(lista: &'a [Dispositivo], nombre: &Option<String>) -> Option<&'a 
 
 impl Render for Trujaman {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let p = paleta(window);
+        let p = paleta(window, cx);
         let escuchando = self.sesion.is_some();
 
         let (clase, texto_estado) = match &self.estado {
-            EstadoModelos::Cargando => (p.tenue, "Cargando modelos…".to_string()),
+            EstadoModelos::Cargando => (
+                p.tenue,
+                if self.traducir {
+                    "Cargando el modelo de traducción…"
+                } else {
+                    "Cargando el modelo de transcripción…"
+                }
+                .to_string(),
+            ),
             EstadoModelos::Listo => (p.acento, "Listo".to_string()),
             EstadoModelos::Mal(e) => (p.alerta, e.clone()),
         };
@@ -426,15 +427,7 @@ impl Render for Trujaman {
             .gap_3()
             .px(px(2.))
             .pb(px(6.))
-            .child(div().flex().items_center().gap(px(10.)).child(img(icono()).size(px(34.))).child(
-                div().text_size(px(30.)).font_weight(FontWeight::MEDIUM).font_family(LETRA_NOMBRE).child(
-                    // La «á» en cobre, como en el logotipo.
-                    StyledText::new("trujamán").with_highlights([(
-                        "trujam".len().."trujamá".len(),
-                        HighlightStyle { color: Some(p.acento), ..Default::default() },
-                    )]),
-                ),
-            ))
+            .child(logotipo(34., 30., p))
             .child(
                 div()
                     .flex()
@@ -443,7 +436,22 @@ impl Render for Trujaman {
                     .text_size(px(13.))
                     .text_color(p.tenue)
                     .child(div().size(px(8.)).rounded_full().bg(clase))
-                    .child(texto_estado),
+                    .child(texto_estado)
+                    .child(
+                        div()
+                            .id("abrir-ajustes")
+                            .ml(px(6.))
+                            .px(px(8.))
+                            .py(px(3.))
+                            .rounded(px(7.))
+                            .border_1()
+                            .border_color(p.raya)
+                            .text_color(p.tinta)
+                            .cursor_pointer()
+                            .hover(|d| d.bg(p.papel))
+                            .child("Ajustes")
+                            .on_click(|_, _, cx| ventanas::abrir_ajustes(cx)),
+                    ),
             );
 
         let aviso = self.aviso.clone().map(|a| {
@@ -494,38 +502,21 @@ impl Render for Trujaman {
             .child(campo("Entrada").child(self.desplegable(Lista::Entrada, entrada, escuchando, p, cx)).child(nivel))
             .child(campo("Salida").child(self.desplegable(Lista::Salida, salida, escuchando, p, cx)));
 
-        let boton_modo = |id: &'static str, texto: &'static str, activo: bool, traducir: bool| {
-            div()
-                .id(id)
-                .flex_1()
-                .flex()
-                .justify_center()
-                .py(px(7.))
-                .px(px(8.))
-                .rounded(px(7.))
-                .cursor_pointer()
-                .text_color(if activo { p.tinta } else { p.tenue })
-                .when(activo, |d| d.bg(p.papel).font_weight(FontWeight::SEMIBOLD).border_1().border_color(p.raya))
-                .child(texto)
-                .on_click(cx.listener(move |this, _, _, cx| {
-                    if this.sesion.is_some() {
-                        this.aviso = Some("Para de escuchar antes de cambiar de modo.".into());
-                    } else {
-                        this.traducir = traducir;
-                    }
-                    cx.notify();
-                }))
-        };
-        let modo = div()
-            .flex()
-            .mt(px(14.))
-            .p(px(3.))
-            .bg(p.fondo)
-            .border_1()
-            .border_color(p.raya)
-            .rounded(px(10.))
-            .child(boton_modo("traducir", "Traducir al inglés", self.traducir, true))
-            .child(boton_modo("transcribir", "Solo transcribir", !self.traducir, false));
+        let modo = div().mt(px(14.)).child(segmentado(
+            "modo",
+            &[(true, "Traducir al inglés"), (false, "Solo transcribir")],
+            self.traducir,
+            p,
+            cx,
+            |this: &mut Self, traducir, cx| {
+                if this.sesion.is_some() {
+                    this.aviso = Some("Para de escuchar antes de cambiar de modo.".into());
+                } else {
+                    this.traducir = traducir;
+                    this.cargar_modelo(false, cx);
+                }
+            },
+        ));
 
         let cascos = self.cascos();
         let opciones = div()
@@ -634,15 +625,21 @@ impl Render for Trujaman {
             .flex()
             .flex_col()
             .gap(px(10.))
-            .min_h(px(132.))
-            .max_h(px(300.))
+            .flex_1()
+            .min_h(px(80.))
             .overflow_y_scroll()
             .track_scroll(&self.scroll)
-            .text_size(px(19.))
-            .line_height(px(29.));
+            .font_family(self.prefs.letra.familia())
+            .text_size(px(self.prefs.tamano.puntos()))
+            .line_height(px(self.prefs.tamano.puntos() * 1.5));
         if self.parrafos.is_empty() {
-            texto =
-                texto.child(div().text_size(px(15.)).text_color(p.tenue).child("Pulsa Escuchar y habla en español."));
+            texto = texto.child(
+                div()
+                    .text_size(px(15.))
+                    .font_family(".SystemUIFont")
+                    .text_color(p.tenue)
+                    .child("Pulsa Escuchar y habla en español."),
+            );
         }
         for parrafo in &self.parrafos {
             let firme = parrafo.firme.trim();
@@ -678,6 +675,7 @@ impl Render for Trujaman {
             .justify_between()
             .items_center()
             .gap(px(10.))
+            .flex_none()
             .mt(px(10.))
             .pt(px(10.))
             .border_t_1()
@@ -703,36 +701,47 @@ impl Render for Trujaman {
                     }))),
             );
 
-        let en_vivo = seccion().child(cadena).child(texto).child(pie);
+        // La tarjeta en vivo ocupa el alto que queda: el texto se desplaza dentro de ella y
+        // el pie (con su borde) queda siempre a la vista.
+        let en_vivo = seccion().flex_1().min_h_0().flex().flex_col().child(cadena).child(texto).child(pie);
 
         div()
-            .id("raiz")
+            .relative()
             .size_full()
             .bg(p.fondo)
             .text_color(p.tinta)
             .text_size(px(15.))
             .font_family(".SystemUIFont")
-            .overflow_y_scroll()
             .child(
                 div()
+                    .size_full()
                     .flex()
                     .flex_col()
-                    .gap(px(14.))
-                    .max_w(px(660.))
-                    .mx_auto()
+                    .items_center()
                     .px(px(16.))
-                    .pt(px(28.))
-                    .pb(px(40.))
-                    .child(cabecera)
-                    .children(aviso)
-                    .child(escuchar)
-                    .child(en_vivo),
+                    .pt(px(ALTO_BARRA + 8.))
+                    .pb(px(16.))
+                    .child(
+                        div()
+                            .w_full()
+                            .max_w(px(660.))
+                            .flex_1()
+                            .min_h_0()
+                            .flex()
+                            .flex_col()
+                            .gap(px(14.))
+                            .child(cabecera)
+                            .children(aviso)
+                            .child(escuchar.flex_none())
+                            .child(en_vivo),
+                    ),
             )
+            // La franja de los botones de la ventana, del color del fondo.
+            .child(div().absolute().top_0().left_0().w_full().child(comun::barra(None, false, p)))
     }
 }
 
 impl Trujaman {
-    /// Un desplegable sencillo: el valor elegido y, al pulsar, la lista encima de todo.
     fn desplegable(
         &self,
         cual: Lista,
@@ -740,152 +749,105 @@ impl Trujaman {
         bloqueado: bool,
         p: Paleta,
         cx: &mut Context<Self>,
-    ) -> impl IntoElement {
+    ) -> gpui::AnyElement {
         let id = match cual {
             Lista::Entrada => "lista-entrada",
             Lista::Salida => "lista-salida",
             Lista::Voz => "lista-voz",
         };
-        let abierta = self.lista_abierta == Some(cual) && !bloqueado;
-        let opciones: Vec<(String, String)> = match cual {
+        let opciones = match cual {
             Lista::Entrada => self.dispositivos.entradas.iter().map(etiqueta_dispositivo).collect(),
             Lista::Salida => self.dispositivos.salidas.iter().map(etiqueta_dispositivo).collect(),
-            Lista::Voz => self.voces.iter().map(|v| (v.clone(), v.clone())).collect(),
+            Lista::Voz => self.voces.iter().map(|v| (Some(v.clone()), v.clone())).collect(),
         };
-
-        let caja = div()
-            .id(id)
-            .flex()
-            .items_center()
-            .justify_between()
-            .gap_2()
-            .w_full()
-            .px(px(10.))
-            .py(px(8.))
-            .bg(p.fondo)
-            .border_1()
-            .border_color(if abierta { p.acento } else { p.raya })
-            .rounded(px(9.))
-            .text_size(px(15.))
-            .text_color(p.tinta)
-            .when(bloqueado, |d| d.opacity(0.55))
-            .when(!bloqueado, |d| d.cursor_pointer())
-            .child(div().flex_1().min_w_0().overflow_hidden().whitespace_nowrap().text_ellipsis().child(valor))
-            .child(div().text_color(p.tenue).text_size(px(11.)).child("▼"))
-            .on_click(cx.listener(move |this, _, _, cx| {
-                if !bloqueado {
-                    this.lista_abierta = if this.lista_abierta == Some(cual) { None } else { Some(cual) };
-                    cx.notify();
+        desplegable(
+            id,
+            valor,
+            opciones,
+            self.lista_abierta == Some(cual),
+            bloqueado,
+            p,
+            cx,
+            move |this: &mut Self, abrir| this.lista_abierta = abrir.then_some(cual),
+            move |this: &mut Self, valor, _| match cual {
+                Lista::Entrada => this.entrada = valor,
+                Lista::Salida => {
+                    this.salida = valor;
+                    this.cascos_manual = None;
                 }
-            }));
-
-        let mut contenedor = div().relative().w_full().child(caja);
-        if abierta {
-            let mut lista = div()
-                .id(SharedString::from(format!("{id}-opciones")))
-                .occlude()
-                .mt(px(4.))
-                .min_w(px(220.))
-                .max_h(px(280.))
-                .overflow_y_scroll()
-                .bg(p.papel)
-                .border_1()
-                .border_color(p.raya)
-                .rounded(px(9.))
-                .shadow_lg()
-                .py(px(4.))
-                .text_size(px(14.))
-                .text_color(p.tinta)
-                .on_mouse_down_out(cx.listener(|this, _, _, cx| {
-                    this.lista_abierta = None;
-                    cx.notify();
-                }));
-            if opciones.is_empty() {
-                lista = lista.child(div().px(px(10.)).py(px(6.)).text_color(p.tenue).child("Nada disponible"));
-            }
-            for (i, (nombre, texto)) in opciones.into_iter().enumerate() {
-                lista = lista.child(
-                    div()
-                        .id(SharedString::from(format!("{id}-{i}")))
-                        .px(px(10.))
-                        .py(px(6.))
-                        .cursor_pointer()
-                        .hover(|d| d.bg(p.acento_suave))
-                        .child(texto)
-                        .on_mouse_down(
-                            MouseButton::Left,
-                            cx.listener(move |this, _, _, cx| {
-                                match cual {
-                                    Lista::Entrada => this.entrada = Some(nombre.clone()),
-                                    Lista::Salida => {
-                                        this.salida = Some(nombre.clone());
-                                        this.cascos_manual = None;
-                                    }
-                                    Lista::Voz => this.voz = Some(nombre.clone()),
-                                }
-                                this.lista_abierta = None;
-                                cx.stop_propagation();
-                                cx.notify();
-                            }),
-                        ),
-                );
-            }
-            contenedor = contenedor.child(deferred(anchored().snap_to_window().child(lista)).with_priority(1));
-        }
-        contenedor
+                Lista::Voz => this.voz = valor,
+            },
+        )
     }
 }
 
-fn etiqueta_dispositivo(d: &Dispositivo) -> (String, String) {
-    let texto = if d.predeterminado { format!("{}  · predeterminado", d.nombre) } else { d.nombre.clone() };
-    (d.nombre.clone(), texto)
-}
+actions!(trujaman, [AcercaDe, AbrirAjustes, Ocultar, OcultarOtras, MostrarTodas, Salir, Minimizar, Cerrar, Web]);
 
-fn casilla(
-    id: &'static str,
-    texto: &'static str,
-    marcada: bool,
-    bloqueada: bool,
-    p: Paleta,
-    al_pulsar: impl Fn(&gpui::ClickEvent, &mut Window, &mut App) + 'static,
-) -> impl IntoElement {
-    div()
-        .id(id)
-        .flex()
-        .items_center()
-        .gap(px(7.))
-        .when(bloqueada, |d| d.opacity(0.55))
-        .when(!bloqueada, |d| d.cursor_pointer().on_click(al_pulsar))
-        .child(
-            div()
-                .size(px(16.))
-                .rounded(px(4.))
-                .border_1()
-                .border_color(if marcada { p.acento } else { p.tenue })
-                .when(marcada, |d| d.bg(p.acento))
-                .flex()
-                .items_center()
-                .justify_center()
-                .text_size(px(11.))
-                .text_color(p.sobre_acento)
-                .when(marcada, |d| d.child("✓")),
-        )
-        .child(texto)
+fn menus(cx: &mut App) {
+    cx.on_action(|_: &AcercaDe, cx| ventanas::abrir_acerca(cx));
+    cx.on_action(|_: &AbrirAjustes, cx| ventanas::abrir_ajustes(cx));
+    cx.on_action(|_: &Ocultar, cx| cx.hide());
+    cx.on_action(|_: &OcultarOtras, cx| cx.hide_other_apps());
+    cx.on_action(|_: &MostrarTodas, cx| cx.unhide_other_apps());
+    cx.on_action(|_: &Salir, cx| cx.quit());
+    cx.on_action(|_: &Web, cx| cx.open_url(WEB));
+    cx.on_action(|_: &Minimizar, cx| {
+        if let Some(v) = cx.active_window() {
+            let _ = v.update(cx, |_, window, _| window.minimize_window());
+        }
+    });
+    cx.on_action(|_: &Cerrar, cx| {
+        if let Some(v) = cx.active_window() {
+            let _ = v.update(cx, |_, window, _| window.remove_window());
+        }
+    });
+    cx.bind_keys([
+        KeyBinding::new("cmd-,", AbrirAjustes, None),
+        KeyBinding::new("cmd-h", Ocultar, None),
+        KeyBinding::new("alt-cmd-h", OcultarOtras, None),
+        KeyBinding::new("cmd-q", Salir, None),
+        KeyBinding::new("cmd-m", Minimizar, None),
+        KeyBinding::new("cmd-w", Cerrar, None),
+    ]);
+    cx.set_menus(vec![
+        Menu {
+            name: "Trujamán".into(),
+            items: vec![
+                MenuItem::action("Acerca de Trujamán", AcercaDe),
+                MenuItem::separator(),
+                MenuItem::action("Ajustes…", AbrirAjustes),
+                MenuItem::separator(),
+                MenuItem::os_submenu("Servicios", SystemMenuType::Services),
+                MenuItem::separator(),
+                MenuItem::action("Ocultar Trujamán", Ocultar),
+                MenuItem::action("Ocultar otras", OcultarOtras),
+                MenuItem::action("Mostrar todas", MostrarTodas),
+                MenuItem::separator(),
+                MenuItem::action("Salir de Trujamán", Salir),
+            ],
+        },
+        Menu {
+            name: "Ventana".into(),
+            items: vec![MenuItem::action("Minimizar", Minimizar), MenuItem::action("Cerrar", Cerrar)],
+        },
+        Menu { name: "Ayuda".into(), items: vec![MenuItem::action("Trujamán en GitHub", Web)] },
+    ]);
 }
 
 fn main() {
     Application::new().run(|cx: &mut App| {
-        let bounds = Bounds::centered(None, size(px(700.), px(780.)), cx);
-        cx.open_window(
-            WindowOptions {
-                window_bounds: Some(WindowBounds::Windowed(bounds)),
-                titlebar: Some(gpui::TitlebarOptions { title: Some("Trujamán".into()), ..Default::default() }),
-                ..Default::default()
-            },
-            |_, cx| cx.new(Trujaman::new),
-        )
-        .expect("no se puede abrir la ventana");
-        cx.on_window_closed(|cx| cx.quit()).detach();
+        cx.set_global(Preferencias::cargar());
+        menus(cx);
+        let principal = cx
+            .open_window(ventanas::opciones_ventana("Trujamán", 700., 800., true, cx), |_, cx| cx.new(Trujaman::new))
+            .expect("no se puede abrir la ventana");
+        // Cerrar la ventana principal cierra la app; Ajustes y Acerca de, no.
+        cx.on_window_closed(move |cx| {
+            if !cx.windows().iter().any(|w| w.window_id() == principal.window_id()) {
+                cx.quit();
+            }
+        })
+        .detach();
         cx.activate(true);
     });
 }
