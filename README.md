@@ -213,14 +213,39 @@ En *Ajustes* (⌘,) se elige el tema (sistema, claro u oscuro), con qué micro, 
 modo y voz arranca, y la letra y el tamaño del texto en vivo. Se guardan en
 `~/Library/Application Support/Trujaman/preferencias.json`.
 
-Hace falta [Rust](https://rustup.rs) y los modelos en `modelos/` (los baja
-`scripts/doctor.sh --arreglar`).
+Para compilarla no hace falta nada de la interfaz web (ni `whisper-cpp` de brew, ni
+ffmpeg, ni Python): whisper.cpp va dentro de la app.
+
+| Qué | Para qué | Cómo se instala |
+|---|---|---|
+| Mac con Apple Silicon | Whisper usa la GPU (Metal) | |
+| Herramientas de Xcode | Compilador de C++ para whisper.cpp; `iconutil` para el icono | `xcode-select --install` |
+| Rust 1.85 o más | Compila la app | [rustup.rs](https://rustup.rs) |
+| `cmake` | Compila whisper.cpp | `brew install cmake` |
+| 2 modelos (unos 1,1 GB) | Los mismos de arriba, en `modelos/` | Los baja `doctor.sh --arreglar --app` |
 
 ```bash
-app/empaquetar.sh --abrir      # compila y abre target/Trujaman.app
+git clone https://github.com/juanko6/trujaman.git && cd trujaman
 ```
 
-La primera vez macOS pide permiso de micrófono para Trujaman.
+```bash
+scripts/doctor.sh --arreglar --app
+```
+
+Con `--app`, `doctor.sh` revisa solo lo de esta lista y baja los modelos que falten.
+
+```bash
+app/empaquetar.sh --abrir
+```
+
+Compila y abre `target/Trujaman.app`. La primera vez tarda unos minutos, porque compila
+también whisper.cpp; después, segundos. Ábrela desde ahí: busca los modelos en la
+carpeta `modelos/` subiendo desde donde está la app, así que si la mueves a
+*Aplicaciones* no los encuentra.
+
+La primera vez macOS pide permiso de micrófono y, si el repo está en *Documentos* o en
+el *Escritorio*, permiso para esa carpeta. Como la firma es local, cada vez que se
+recompila los vuelve a pedir.
 
 Prueba de latencia sin micro: pasa una frase de unos 8 s (la genera con la voz Mónica si
 no está en `audio/frase-prueba.wav`) a ritmo real por el núcleo y mide cuándo sale cada
