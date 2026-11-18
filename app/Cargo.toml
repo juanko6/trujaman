@@ -1,0 +1,18 @@
+[package]
+name = "trujaman"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+
+[dependencies]
+nucleo = { path = "../nucleo" }
+gpui = "=0.2.2"
+async-channel = "2"
+crossbeam-channel = "0.5"
+dirs = "5"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+libc = "0.2"
+# Pinta el icono (en la cabecera y en `--example icono`, que saca el .icns). Es el mismo
+# resvg que ya trae GPUI.
+resvg = { version = "0.45", default-features = false }
