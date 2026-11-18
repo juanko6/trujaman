@@ -7,8 +7,8 @@ mod comun;
 mod preferencias;
 mod ventanas;
 
-use std::sync::Arc;
-use std::time::Duration;
+use std::sync::{Arc, Weak};
+use std::time::{Duration, Instant};
 
 use gpui::{
     actions, div, prelude::*, px, App, Application, ClipboardItem, Context, FontWeight, HighlightStyle, KeyBinding,
@@ -16,7 +16,7 @@ use gpui::{
 };
 use nucleo::audio::{self, Dispositivo, Dispositivos};
 use nucleo::voz::Locutor;
-use nucleo::whisper::{carpeta_modelos, Modelos};
+use nucleo::whisper::{carpeta_modelos, Modelo, Modelos};
 use nucleo::{Ajustes, Evento, Fuente, Sesion};
 
 use comun::{casilla, desplegable, etiqueta_dispositivo, logotipo, paleta, segmentado, Paleta, ALTO_BARRA, WEB};
@@ -73,6 +73,7 @@ struct Trujaman {
     /// Las preferencias ya aplicadas, para ver qué cambia cuando se tocan en Ajustes.
     prefs: Preferencias,
     _al_cambiar_prefs: Subscription,
+    _al_salir: Subscription,
 }
 
 impl Trujaman {
@@ -104,6 +105,10 @@ impl Trujaman {
             scroll: ScrollHandle::new(),
             prefs,
             _al_cambiar_prefs: cx.observe_global::<Preferencias>(|this, cx| this.aplicar_prefs(cx)),
+            _al_salir: cx.on_app_quit(|this, _| {
+                this.al_salir();
+                async {}
+            }),
         };
 
         yo.cargar_modelo(depurar(), cx);
@@ -242,6 +247,31 @@ impl Trujaman {
             });
         })
         .detach();
+    }
+
+    /// Al salir hay que haber soltado el modelo: whisper.cpp comprueba al cerrar el proceso
+    /// que no queda memoria de Metal reservada y, si queda, aborta (y macOS enseña un
+    /// informe de fallo). Se para la escucha y se suelta el modelo; si la escucha no acaba
+    /// a tiempo (cerrar el micro puede quedarse esperando a CoreAudio), se cierra el
+    /// proceso sin pasar por esa comprobación. Las preferencias ya están guardadas.
+    fn al_salir(&mut self) {
+        let modelos: Vec<Weak<Modelo>> = self
+            .modelos
+            .take()
+            .map(|m| [&m.turbo, &m.medium].into_iter().flatten().map(Arc::downgrade).collect())
+            .unwrap_or_default();
+        if let Some(sesion) = self.sesion.take() {
+            sesion.pedir_parada();
+            let reloj = Instant::now();
+            while !sesion.terminada() && reloj.elapsed() < Duration::from_millis(1500) {
+                std::thread::sleep(Duration::from_millis(20));
+            }
+            drop(sesion);
+        }
+        if modelos.iter().any(|m| m.strong_count() > 0) {
+            // SAFETY: _exit termina el proceso sin más; no queda nada por guardar.
+            unsafe { libc::_exit(0) };
+        }
     }
 
     fn listo(&self) -> bool {

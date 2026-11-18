@@ -120,6 +120,11 @@ impl Sesion {
         }
     }
 
+    /// Pide que pare, sin esperar a que acabe (para eso, [`Sesion::parar`]).
+    pub fn pedir_parada(&self) {
+        self.parar.store(true, Ordering::Relaxed);
+    }
+
     pub fn terminada(&self) -> bool {
         self.hilo.as_ref().is_none_or(|h| h.is_finished())
     }
