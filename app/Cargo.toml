@@ -9,3 +9,6 @@ nucleo = { path = "../nucleo" }
 gpui = "=0.2.2"
 async-channel = "2"
 crossbeam-channel = "0.5"
+# Pinta el icono (en la cabecera y en `--example icono`, que saca el .icns). Es el mismo
+# resvg que ya trae GPUI.
+resvg = { version = "0.45", default-features = false }

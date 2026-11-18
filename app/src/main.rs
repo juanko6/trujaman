@@ -7,16 +7,18 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use gpui::{
-    anchored, deferred, div, prelude::*, px, rgb, size, App, Application, Bounds, ClipboardItem, Context, FontWeight,
-    HighlightStyle, Hsla, MouseButton, ScrollHandle, SharedString, StyledText, Window, WindowAppearance, WindowBounds,
-    WindowOptions,
+    anchored, deferred, div, img, prelude::*, px, rgb, size, App, Application, Bounds, ClipboardItem, Context,
+    FontWeight, HighlightStyle, Hsla, Image, ImageFormat, MouseButton, ScrollHandle, SharedString, StyledText, Window,
+    WindowAppearance, WindowBounds, WindowOptions,
 };
 use nucleo::audio::{self, Dispositivo, Dispositivos};
 use nucleo::voz::Locutor;
 use nucleo::whisper::{carpeta_modelos, Modelos};
 use nucleo::{Ajustes, Evento, Fuente, Sesion};
 
-// ---- Colores (los mismos que ui.html) --------------------------------------------
+// ---- Colores --------------------------------------------------------------------
+// Los de ui.html, con el cobre rojizo del icono como acento. Los avisos van en ámbar
+// para no confundirse con él.
 
 #[derive(Clone, Copy)]
 struct Paleta {
@@ -25,7 +27,10 @@ struct Paleta {
     tinta: Hsla,
     tenue: Hsla,
     raya: Hsla,
+    /// El cobre vivo del icono: botones, casillas, bordes.
     acento: Hsla,
+    /// El mismo cobre, más oscuro (o más claro, en oscuro), para texto pequeño.
+    acento_texto: Hsla,
     acento_suave: Hsla,
     sobre_acento: Hsla,
     alerta: Hsla,
@@ -41,11 +46,12 @@ fn paleta(window: &Window) -> Paleta {
             tinta: c(0xeceae3),
             tenue: c(0x9a968b),
             raya: c(0x33322d),
-            acento: c(0x5cc4ae),
-            acento_suave: c(0x1f3a34),
-            sobre_acento: c(0x10201c),
-            alerta: c(0xf0a37c),
-            alerta_suave: c(0x3a2418),
+            acento: c(0xf0573a),
+            acento_texto: c(0xff8a70),
+            acento_suave: c(0x3d2019),
+            sobre_acento: c(0xffffff),
+            alerta: c(0xf2c46d),
+            alerta_suave: c(0x3a2e14),
         },
         _ => Paleta {
             fondo: c(0xf6f5f1),
@@ -53,13 +59,41 @@ fn paleta(window: &Window) -> Paleta {
             tinta: c(0x1c1b18),
             tenue: c(0x6f6c64),
             raya: c(0xe2dfd6),
-            acento: c(0x0f6b5c),
-            acento_suave: c(0xdcefe9),
+            acento: c(0xf0573a),
+            acento_texto: c(0xc0391f),
+            acento_suave: c(0xfde6df),
             sobre_acento: c(0xffffff),
-            alerta: c(0x9a3b12),
-            alerta_suave: c(0xfbe9df),
+            alerta: c(0x8a5300),
+            alerta_suave: c(0xfbf0da),
         },
     }
+}
+
+// ---- Marca ----------------------------------------------------------------------
+
+/// La letra del nombre en la cabecera (de las que trae macOS).
+const LETRA_NOMBRE: &str = "Charter";
+
+/// El icono, el mismo dibujo del que sale el de la app (`examples/icono.rs`).
+///
+/// Se pasa a PNG aquí porque GPUI 0.2.2 pinta los SVG en color con el rojo y el azul
+/// cambiados (no pasa de RGBA a BGRA, como sí hace con los PNG).
+fn icono() -> Arc<Image> {
+    static ICONO: std::sync::OnceLock<Arc<Image>> = std::sync::OnceLock::new();
+    ICONO
+        .get_or_init(|| {
+            use resvg::{tiny_skia, usvg};
+            let svg = include_str!("../recursos/icono.svg");
+            let png = usvg::Tree::from_str(svg, &usvg::Options::default()).ok().and_then(|arbol| {
+                let lado = 128;
+                let mut lienzo = tiny_skia::Pixmap::new(lado, lado)?;
+                let k = lado as f32 / arbol.size().width();
+                resvg::render(&arbol, tiny_skia::Transform::from_scale(k, k), &mut lienzo.as_mut());
+                lienzo.encode_png().ok()
+            });
+            Arc::new(Image::from_bytes(ImageFormat::Png, png.unwrap_or_default()))
+        })
+        .clone()
 }
 
 // ---- Estado -------------------------------------------------------------------
@@ -392,14 +426,15 @@ impl Render for Trujaman {
             .gap_3()
             .px(px(2.))
             .pb(px(6.))
-            .child(
-                div()
-                    .text_size(px(28.))
-                    .italic()
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .font_family("Georgia")
-                    .child("trujamán"),
-            )
+            .child(div().flex().items_center().gap(px(10.)).child(img(icono()).size(px(34.))).child(
+                div().text_size(px(30.)).font_weight(FontWeight::MEDIUM).font_family(LETRA_NOMBRE).child(
+                    // La «á» en cobre, como en el logotipo.
+                    StyledText::new("trujamán").with_highlights([(
+                        "trujam".len().."trujamá".len(),
+                        HighlightStyle { color: Some(p.acento), ..Default::default() },
+                    )]),
+                ),
+            ))
             .child(
                 div()
                     .flex()
@@ -577,7 +612,7 @@ impl Render for Trujaman {
                 .rounded_full()
                 .border_1()
                 .border_color(if on { p.acento_suave } else { p.raya })
-                .when(on, |d| d.bg(p.acento_suave).text_color(p.acento))
+                .when(on, |d| d.bg(p.acento_suave).text_color(p.acento_texto))
                 .child(texto)
         };
         let flecha = || div().opacity(0.5).child("→");

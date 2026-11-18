@@ -12,11 +12,15 @@ RAIZ="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$RAIZ"
 
 cargo build --release -p trujaman
+# El icono sale de app/recursos/icono.svg.
+rm -rf target/Trujaman.iconset
+cargo run --release -q -p trujaman --example icono -- target/Trujaman.iconset >/dev/null
 
 APP="$RAIZ/target/Trujaman.app"
 VERSION="$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)"
 rm -rf "$APP"
-mkdir -p "$APP/Contents/MacOS"
+mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
+iconutil -c icns target/Trujaman.iconset -o "$APP/Contents/Resources/Trujaman.icns"
 cp target/release/trujaman "$APP/Contents/MacOS/trujaman"
 cat > "$APP/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -27,6 +31,7 @@ cat > "$APP/Contents/Info.plist" <<PLIST
   <key>CFBundleDisplayName</key><string>Trujamán</string>
   <key>CFBundleIdentifier</key><string>dev.trujaman.app</string>
   <key>CFBundleExecutable</key><string>trujaman</string>
+  <key>CFBundleIconFile</key><string>Trujaman</string>
   <key>CFBundlePackageType</key><string>APPL</string>
   <key>CFBundleVersion</key><string>$VERSION</string>
   <key>CFBundleShortVersionString</key><string>$VERSION</string>

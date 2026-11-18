@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 100 100">
+  <!-- Trujamán: una T dentro de un bocadillo, con la barra en dos colores (de una lengua a otra). -->
+  <rect width="100" height="100" rx="23" fill="#F0573A"/>
+  <rect x="14" y="15" width="72" height="58" rx="15" fill="#FBF6F0"/>
+  <path d="M28 70 L24 87 L44 70 Z" fill="#FBF6F0"/>
+  <rect x="26" y="28" width="23" height="10" rx="2" fill="#1F1A17"/>
+  <rect x="51" y="28" width="23" height="10" rx="2" fill="#F0573A"/>
+  <rect x="45" y="34" width="10" height="28" rx="2" fill="#1F1A17"/>
+</svg>
