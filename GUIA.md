@@ -272,6 +272,10 @@ Hace dos cosas en la misma dirección: sirve la interfaz (explicada en el
 [README](README.md#uso-la-interfaz)) y da servicio por HTTP a cualquier otra app. Con
 `NO_ABRIR=1` no abre el navegador.
 
+Se apaga solo unos 6 s después de cerrar la última pestaña (la página mantiene una
+conexión abierta y el servidor nota cuándo desaparece), o al pulsar *Cerrar*. Con
+`NO_ABRIR=1` o `NO_CERRAR=1` no se apaga solo: es lo que hace falta para usarlo como API.
+
 Por dentro, `ui.py` arranca dos `whisper-server`, uno con cada modelo, y deja los dos
 cargados. Medido en este Mac: la página responde a los 0,09 s y los dos modelos están
 listos a los 3,7 s. Para escuchar, lanza `simultaneo.py` con `EVENTOS=1`, que en vez de

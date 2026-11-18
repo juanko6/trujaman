@@ -28,6 +28,9 @@
   h1 { margin: 0; font: italic 600 28px/1 ui-serif, Georgia, serif; letter-spacing: -0.01em; }
   h1 small { font: 400 13px system-ui, sans-serif; color: var(--tenue); margin-left: 8px; font-style: normal; }
   h2 { margin: 0 0 10px; font-size: 12px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--tenue); }
+  .cabecera { display: flex; align-items: center; gap: 12px; }
+  .apagado { text-align: center; padding: 72px 16px; color: var(--tenue); }
+  .apagado strong { display: block; color: var(--tinta); font-size: 19px; margin-bottom: 6px; }
   .estado { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; color: var(--tenue); white-space: nowrap; }
   .punto { width: 8px; height: 8px; border-radius: 50%; background: var(--tenue); }
   .estado.listo .punto { background: var(--acento); }
@@ -98,7 +101,10 @@
 <main>
   <header>
     <h1>trujamán<small id="prueba" hidden>modo prueba</small></h1>
-    <div class="estado cargando" id="estado" role="status"><span class="punto"></span><span id="estadoTexto">Conectando…</span></div>
+    <div class="cabecera">
+      <div class="estado cargando" id="estado" role="status"><span class="punto"></span><span id="estadoTexto">Conectando…</span></div>
+      <button class="mini" id="cerrar" title="Apaga trujamán y descarga los modelos. También se apaga solo al cerrar esta pestaña.">Cerrar</button>
+    </div>
   </header>
 
   <div class="aviso" id="aviso" hidden role="alert"><span id="avisoTexto"></span><button id="avisoCerrar" aria-label="Cerrar aviso">✕</button></div>
@@ -334,6 +340,18 @@ const fuente = new EventSource("/api/eventos");
 fuente.onmessage = m => { const e = JSON.parse(m.data); (al[e.tipo] || (() => {}))(e); };
 fuente.onopen = () => pintarEstado(true);
 fuente.onerror = () => { pintarEstado(false); };
+
+// ---- Cerrar ------------------------------------------------------------------
+$("cerrar").onclick = async () => {
+  fuente.close();
+  try { await fetch("/api/cerrar", { method: "POST" }); } catch {}
+  const fin = Object.assign(document.createElement("div"), { className: "apagado" });
+  const titulo = document.createElement("strong"); titulo.textContent = "trujamán está cerrado";
+  fin.append(titulo, "Ya puedes cerrar esta pestaña. Para abrirlo de nuevo: doble clic en Trujaman.command.");
+  const cabecera = document.querySelector("header");
+  document.querySelector("main").replaceChildren(cabecera, fin);
+  $("estado").hidden = $("cerrar").hidden = true;
+};
 
 // ---- Ficheros ----------------------------------------------------------------
 const cola = [];
